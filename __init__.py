@@ -1,4 +1,3 @@
-
 """
 Pure PyTorch replacement for a subset of DGL functionality.
 
@@ -26,6 +25,7 @@ import types
 # Edge / Node view objects (mimic DGL's EdgeBatch / NodeBatch)
 # ---------------------------------------------------------------------------
 
+
 class EdgeView:
     """Passed to user-defined message functions. Mimics DGL's ``edges``."""
 
@@ -41,7 +41,7 @@ class EdgeView:
         self._src_ids = src_ids
         self._dst_ids = dst_ids
         self._edge_ids = edge_ids
-        self.src = src_data    # {feat_name: tensor[num_msg_edges, *]}
+        self.src = src_data  # {feat_name: tensor[num_msg_edges, *]}
         self.dst = dst_data
         self.data = edge_data
 
@@ -74,7 +74,7 @@ class NodeMailbox:
     """Passed to user-defined reduce functions. Mimics DGL's ``nodes``."""
 
     def __init__(self, mailbox: Dict[str, Tensor], node_data: Dict[str, Tensor]):
-        self.mailbox = mailbox   # {msg_name: tensor[num_recv_nodes, deg, *]}
+        self.mailbox = mailbox  # {msg_name: tensor[num_recv_nodes, deg, *]}
         self.data = node_data
 
     def __len__(self) -> int:
@@ -88,6 +88,7 @@ class NodeMailbox:
 # ---------------------------------------------------------------------------
 # Graph
 # ---------------------------------------------------------------------------
+
 
 class Graph:
     """
@@ -127,8 +128,8 @@ class Graph:
             if num_nodes is not None
             else (int(max(src.max(), dst.max())) + 1 if src.numel() > 0 else 0)
         )
-        self.ndata: Dict[str, Tensor] = {}   # node features
-        self.edata: Dict[str, Tensor] = {}   # edge features
+        self.ndata: Dict[str, Tensor] = {}  # node features
+        self.edata: Dict[str, Tensor] = {}  # edge features
 
     # -- properties ----------------------------------------------------------
 
@@ -180,17 +181,27 @@ class Graph:
             v = torch.tensor(v, dtype=torch.long, device=self.device)
         edge_set = set(zip(self._src.cpu().tolist(), self._dst.cpu().tolist()))
         result = torch.tensor(
-            [(int(a), int(b)) in edge_set for a, b in zip(u.cpu().tolist(), v.cpu().tolist())],
-            dtype=torch.bool, device=self.device
+            [
+                (int(a), int(b)) in edge_set
+                for a, b in zip(u.cpu().tolist(), v.cpu().tolist())
+            ],
+            dtype=torch.bool,
+            device=self.device,
         )
         return result
 
-    def edges(self, form: str = "uv") -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
+    def edges(
+        self, form: str = "uv"
+    ) -> Union[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor, Tensor]]:
         """Return edges. ``form`` is 'uv' or 'all'."""
         if form == "uv":
             return self._src, self._dst
         elif form == "all":
-            return self._src, self._dst, torch.arange(self.num_edges(), device=self.device)
+            return (
+                self._src,
+                self._dst,
+                torch.arange(self.num_edges(), device=self.device),
+            )
         raise ValueError(f"Unknown form: {form}")
 
     def to(self, device: torch.device) -> "Graph":
@@ -236,7 +247,9 @@ class Graph:
         edges: Union[Tensor, Tuple[Tensor, Tensor]],
         message_fn: Callable[[EdgeView], Dict[str, Tensor]],
         reduce_fn: Union[str, Callable[[NodeMailbox], Dict[str, Tensor]]],
-        apply_node_fn: Optional[Callable[[Dict[str, Tensor]], Dict[str, Tensor]]] = None,
+        apply_node_fn: Optional[
+            Callable[[Dict[str, Tensor]], Dict[str, Tensor]]
+        ] = None,
     ) -> None:
         """
         Message-passing on a subset of edges.
@@ -287,7 +300,10 @@ class Graph:
                     for k, v in updated.items():
                         if k not in self.ndata:
                             self.ndata[k] = torch.zeros(
-                                self._num_nodes, *v.shape[1:], dtype=v.dtype, device=self.device
+                                self._num_nodes,
+                                *v.shape[1:],
+                                dtype=v.dtype,
+                                device=self.device,
                             )
                         self.ndata[k][unique_dst] = v
             return
@@ -314,13 +330,18 @@ class Graph:
                 for k, v in updated.items():
                     if k not in self.ndata:
                         self.ndata[k] = torch.zeros(
-                            self._num_nodes, *v.shape[1:], dtype=v.dtype, device=self.device
+                            self._num_nodes,
+                            *v.shape[1:],
+                            dtype=v.dtype,
+                            device=self.device,
                         )
                     self.ndata[k][unique_dst] = v
 
     # helpers for reduce
 
-    def _builtin_reduce(self, dst: Tensor, messages: Dict[str, Tensor], op: str) -> None:
+    def _builtin_reduce(
+        self, dst: Tensor, messages: Dict[str, Tensor], op: str
+    ) -> None:
         """Scatter-based built-in reduce: sum | mean | max | min.
 
         Only destination nodes that receive messages are updated;
@@ -334,7 +355,9 @@ class Graph:
             if key in self.ndata:
                 out = self.ndata[key].clone()
             else:
-                out = torch.zeros(self._num_nodes, *msg.shape[1:], dtype=msg.dtype, device=self.device)
+                out = torch.zeros(
+                    self._num_nodes, *msg.shape[1:], dtype=msg.dtype, device=self.device
+                )
 
             idx = dst.unsqueeze(-1).expand_as(msg) if msg.ndim > 1 else dst
 
@@ -345,7 +368,9 @@ class Graph:
             elif op == "mean":
                 out[recv_mask] = 0
                 out.scatter_add_(0, idx, msg)
-                count = torch.zeros(self._num_nodes, device=self.device, dtype=msg.dtype)
+                count = torch.zeros(
+                    self._num_nodes, device=self.device, dtype=msg.dtype
+                )
                 ones = torch.ones(dst.shape[0], device=self.device, dtype=msg.dtype)
                 count.scatter_add_(0, dst, ones)
                 count = count.clamp(min=1)
@@ -357,13 +382,21 @@ class Graph:
             elif op in ("max", "min"):
                 fill = float("-inf") if op == "max" else float("inf")
                 reduced = torch.full_like(out, fill)
-                reduced.scatter_reduce_(0, idx, msg, reduce=f"a{op}", include_self=False)
+                reduced.scatter_reduce_(
+                    0, idx, msg, reduce=f"a{op}", include_self=False
+                )
                 out[recv_mask] = reduced[recv_mask]
             else:
                 raise ValueError(f"Unknown reduce op: {op}")
             self.ndata[key] = out
 
-    def _udf_reduce(self, dst: Tensor, messages: Dict[str, Tensor], reduce_fn: Callable, edge_ids: Tensor) -> None:
+    def _udf_reduce(
+        self,
+        dst: Tensor,
+        messages: Dict[str, Tensor],
+        reduce_fn: Callable,
+        edge_ids: Tensor,
+    ) -> None:
         """
         User-defined reduce using degree bucketing (matching DGL semantics).
 
@@ -397,7 +430,7 @@ class Graph:
             # Nodes in this bucket (indices into unique_dst)
             bucket_mask = counts == deg
             bucket_local = torch.where(bucket_mask)[0]  # indices into unique_dst
-            bucket_global = unique_dst[bucket_local]     # original node IDs
+            bucket_global = unique_dst[bucket_local]  # original node IDs
             num_nodes_bkt = bucket_local.shape[0]
 
             # Gather messages for this bucket
@@ -426,13 +459,13 @@ class Graph:
             if key not in self.ndata:
                 sample_val = node_val_pairs[0][1]
                 self.ndata[key] = torch.zeros(
-                    self._num_nodes, *sample_val.shape[1:],
-                    dtype=sample_val.dtype, device=self.device
+                    self._num_nodes,
+                    *sample_val.shape[1:],
+                    dtype=sample_val.dtype,
+                    device=self.device,
                 )
             for node_ids, val in node_val_pairs:
                 self.ndata[key][node_ids] = val
-
-    # -- nice repr -----------------------------------------------------------
 
     def update_all(
         self,
@@ -447,7 +480,9 @@ class Graph:
         """
         self.send_and_recv(
             torch.arange(self.num_edges(), device=self.device),
-            message_fn, reduce_fn, apply_node_fn
+            message_fn,
+            reduce_fn,
+            apply_node_fn,
         )
 
     def apply_nodes(
@@ -467,7 +502,10 @@ class Graph:
             for k, val in result.items():
                 if k not in self.ndata:
                     self.ndata[k] = torch.zeros(
-                        self._num_nodes, *val.shape[1:], dtype=val.dtype, device=self.device
+                        self._num_nodes,
+                        *val.shape[1:],
+                        dtype=val.dtype,
+                        device=self.device,
                     )
                 self.ndata[k][v] = val
 
@@ -491,7 +529,10 @@ class Graph:
             for k, val in result.items():
                 if k not in self.edata:
                     self.edata[k] = torch.zeros(
-                        self.num_edges(), *val.shape[1:], dtype=val.dtype, device=self.device
+                        self.num_edges(),
+                        *val.shape[1:],
+                        dtype=val.dtype,
+                        device=self.device,
                     )
                 self.edata[k][eid] = val
 
@@ -506,6 +547,7 @@ class Graph:
 # Module-level functions (mirror dgl.*)
 # ---------------------------------------------------------------------------
 
+
 def graph(
     edges: Tuple[Union[Tensor, list], Union[Tensor, list]],
     num_nodes: Optional[int] = None,
@@ -515,7 +557,11 @@ def graph(
     return Graph(edges, num_nodes=num_nodes, device=device)
 
 
-def to_networkx(g: Graph, node_attrs: Optional[List[str]] = None, edge_attrs: Optional[List[str]] = None) -> nx.DiGraph:
+def to_networkx(
+    g: Graph,
+    node_attrs: Optional[List[str]] = None,
+    edge_attrs: Optional[List[str]] = None,
+) -> nx.DiGraph:
     """Convert to a NetworkX DiGraph.  Drop-in for ``dgl.to_networkx(...)``."""
     G = nx.DiGraph()
     G.add_nodes_from(range(g.num_nodes()))
@@ -695,6 +741,7 @@ def load_graphs(
 # One-time DGL .bin → .pt conversion  (requires dgl installed)
 # ---------------------------------------------------------------------------
 
+
 def convert_from_dgl(
     src_path: Union[str, Path],
     dst_path: Optional[Union[str, Path]] = None,
@@ -758,6 +805,7 @@ def convert_from_dgl(
 # Batch conversion helper
 # ---------------------------------------------------------------------------
 
+
 def convert_all_from_dgl(
     directory: Union[str, Path],
     pattern: str = "*.bin",
@@ -789,9 +837,11 @@ def convert_all_from_dgl(
 random = types.ModuleType("dgl.random")
 random.__package__ = "dgl"
 
+
 def _random_seed(seed: int) -> None:
     """Drop-in for ``dgl.random.seed(...)``."""
     torch.manual_seed(seed)
+
 
 random.seed = _random_seed
 
@@ -802,6 +852,7 @@ random.seed = _random_seed
 
 transforms = types.ModuleType("dgl.transforms")
 transforms.__package__ = "dgl"
+
 
 def _add_self_loop(g: Graph) -> Graph:
     """Drop-in for ``dgl.transforms.add_self_loop(...)``."""
@@ -817,6 +868,7 @@ def _add_self_loop(g: Graph) -> Graph:
         pad = torch.zeros(g.num_nodes(), *v.shape[1:], dtype=v.dtype, device=v.device)
         new_g.edata[k] = torch.cat([v, pad])
     return new_g
+
 
 transforms.add_self_loop = _add_self_loop
 
@@ -861,6 +913,7 @@ if __name__ == "__main__":
 
     # save / load round-trip
     import tempfile, os
+
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "test.pt")
         save_graphs(path, [g, g2], labels={"y": torch.tensor([0, 1])})
