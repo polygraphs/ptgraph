@@ -19,6 +19,8 @@ import tempfile
 import os
 import sys
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import ptgraph
 
 # Try importing real DGL for comparison
