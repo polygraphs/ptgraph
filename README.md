@@ -75,8 +75,11 @@ git clone https://github.com/alexandroskoliousis/polygraphs.git
 2. `cd` into the `polygraphs` directory and change `requirements.txt` to remove DGL and install the latest version of PyTorch:
 ``` raw
 torch
-notebook
 matplotlib
+jupyterlab
+tqdm=4.64.1
+fsspec
+ipywidgets
 pylint
 flake8
 PyYaml
