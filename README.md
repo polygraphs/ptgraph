@@ -104,3 +104,6 @@ source .venv/bin/activate
 pip install --upgrade pip
 python setup.py install
 ```
+
+## Attribution
+This package contains code derived from [DGL](https://github.com/dmlc/dgl), licensed under the Apache License 2.0
