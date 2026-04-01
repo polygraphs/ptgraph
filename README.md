@@ -65,45 +65,5 @@ Bye.
 python test_ptgraph.py --standalone
 ```
 
-## Polygraphs Installation
-1. Clone the Polygraphs repository:
-
-``` bash
-git clone https://github.com/alexandroskoliousis/polygraphs.git
-```
-
-2. `cd` into the `polygraphs` directory and change `requirements.txt` to remove DGL and install the latest version of PyTorch:
-``` raw
-torch
-matplotlib
-jupyterlab
-tqdm=4.64.1
-fsspec
-ipywidgets
-pylint
-flake8
-PyYaml
-pandas
-h5py
-fsspec
-```
-
-4. If you need GPU support, [install the appropriate version of torch](https://pytorch.org/get-started/locally/) before continuing. For CPUs, continue to the next step
-
-5. Clone ptgraph to replace DGL inside the Polygraphs repository:
-
-```bash
-git subtree add --prefix=dgl https://github.com/amil-m/ptgraph.git main --squash
-```
-
-6. Finish the installation from inside the Polygraphs directory:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-python setup.py install
-```
-
 ## Attribution
 This package contains code derived from [DGL](https://github.com/dmlc/dgl), licensed under the Apache License 2.0
