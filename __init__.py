@@ -410,8 +410,9 @@ class Graph:
 
         # Sort messages by (destination_node, edge_id) so mailbox order
         # matches DGL's semantics of sorting by edge ID per node.
-        sort_keys = inverse.float() * (edge_ids.max() + 1).float() + edge_ids.float()
-        sort_order = torch.argsort(sort_keys)
+        max_eid = edge_ids.max().item() + 1 if edge_ids.numel() > 0 else 1
+        sort_keys = inverse.long() * max_eid + edge_ids.long()
+        sort_order = torch.argsort(sort_keys, stable=True)
         sorted_inverse = inverse[sort_order]
         sorted_msgs = {k: v[sort_order] for k, v in messages.items()}
 
