@@ -560,7 +560,7 @@ def to_networkx(
     """Convert to a NetworkX DiGraph.  Drop-in for ``dgl.to_networkx(...)``."""
     G = nx.DiGraph()
     G.add_nodes_from(range(g.num_nodes()))
-    src, dst = g.edges()
+    src, dst = g.edges()  # type: ignore
     src_list, dst_list = src.cpu().tolist(), dst.cpu().tolist()
 
     for i, (u, v) in enumerate(zip(src_list, dst_list)):
@@ -648,7 +648,7 @@ def from_networkx(
 
 def remove_self_loop(g: Graph) -> Graph:
     """Return a new graph with self-loops removed.  Drop-in for ``dgl.remove_self_loop(...)``."""
-    src, dst = g.edges()
+    src, dst = g.edges()  # type: ignore
     mask = src != dst
     new_g = Graph((src[mask], dst[mask]), num_nodes=g.num_nodes(), device=g.device)
     new_g.ndata = {k: v.clone() for k, v in g.ndata.items()}
@@ -830,33 +830,41 @@ def convert_all_from_dgl(
 # ---------------------------------------------------------------------------
 
 
-def set_seed(seed: int) -> None:
-    """Seed the torch RNG (used for all graph-level random operations)."""
-    torch.manual_seed(seed)
+class random:
+    """RNG utilities."""
+
+    @staticmethod
+    def seed(value: int) -> None:
+        """Seed the torch RNG (used for all graph-level random operations)."""
+        torch.manual_seed(value)
 
 
-def add_self_loop(g: Graph, edge_fill_value: float = 0.0) -> Graph:
-    """Return a new graph with a self-loop added at every node.
+class transforms:
+    """Graph transforms."""
 
-    Edge features on new self-loop edges are filled with ``edge_fill_value``
-    (default 0). If you use edge weights where 1 means "present", pass
-    ``edge_fill_value=1.0``.
-    """
-    src, dst = g.edges()
-    self_nodes = torch.arange(g.num_nodes(), dtype=torch.long, device=g.device)
-    new_src = torch.cat([src, self_nodes])
-    new_dst = torch.cat([dst, self_nodes])
-    new_g = Graph((new_src, new_dst), num_nodes=g.num_nodes(), device=g.device)
-    new_g.ndata = {k: v.clone() for k, v in g.ndata.items()}
-    for k, v in g.edata.items():
-        pad = torch.full(
-            (g.num_nodes(), *v.shape[1:]),
-            edge_fill_value,
-            dtype=v.dtype,
-            device=v.device,
-        )
-        new_g.edata[k] = torch.cat([v, pad])
-    return new_g
+    @staticmethod
+    def add_self_loop(g: Graph, edge_fill_value: float = 0.0) -> "Graph":
+        """Return a new graph with a self-loop added at every node.
+
+        Edge features on new self-loop edges are filled with ``edge_fill_value``
+        (default 0). If you use edge weights where 1 means "present", pass
+        ``edge_fill_value=1.0``.
+        """
+        src, dst = g.edges()  # type: ignore
+        self_nodes = torch.arange(g.num_nodes(), dtype=torch.long, device=g.device)
+        new_src = torch.cat([src, self_nodes])
+        new_dst = torch.cat([dst, self_nodes])
+        new_g = Graph((new_src, new_dst), num_nodes=g.num_nodes(), device=g.device)
+        new_g.ndata = {k: v.clone() for k, v in g.ndata.items()}
+        for k, v in g.edata.items():
+            pad = torch.full(
+                (g.num_nodes(), *v.shape[1:]),
+                edge_fill_value,
+                dtype=v.dtype,
+                device=v.device,
+            )
+            new_g.edata[k] = torch.cat([v, pad])
+        return new_g
 
 
 # ---------------------------------------------------------------------------
@@ -914,4 +922,4 @@ if __name__ == "__main__":
         assert loaded_one[0].num_edges() == 3
         print(f"Save/load round-trip OK ({path})")
 
-    print("\n✓ All smoke tests passed.")
+    print("\nAll smoke tests passed.")
