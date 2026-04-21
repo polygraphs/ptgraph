@@ -19,7 +19,6 @@ import networkx as nx
 from torch import Tensor
 from typing import Callable, Dict, Optional, Tuple, Union, List, Any
 from pathlib import Path
-import types
 
 # ---------------------------------------------------------------------------
 # Edge / Node view objects (mimic DGL's EdgeBatch / NodeBatch)
@@ -175,20 +174,15 @@ class Graph:
 
     def has_edges_between(self, u: Tensor, v: Tensor) -> Tensor:
         """Check whether edges exist between pairs of nodes."""
-        if not isinstance(u, Tensor):
-            u = torch.tensor(u, dtype=torch.long, device=self.device)
-        if not isinstance(v, Tensor):
-            v = torch.tensor(v, dtype=torch.long, device=self.device)
-        edge_set = set(zip(self._src.cpu().tolist(), self._dst.cpu().tolist()))
-        result = torch.tensor(
-            [
-                (int(a), int(b)) in edge_set
-                for a, b in zip(u.cpu().tolist(), v.cpu().tolist())
-            ],
-            dtype=torch.bool,
-            device=self.device,
-        )
-        return result
+        u = torch.as_tensor(u, dtype=torch.long, device=self.device)
+        v = torch.as_tensor(v, dtype=torch.long, device=self.device)
+        if self._edge_keys_sorted is None:
+            keys = self._src * self._num_nodes + self._dst
+            self._edge_keys_sorted, _ = torch.sort(keys)
+        query = u * self._num_nodes + v
+        idx = torch.searchsorted(self._edge_keys_sorted, query)
+        idx = idx.clamp(max=self._edge_keys_sorted.numel() - 1)
+        return self._edge_keys_sorted[idx] == query
 
     def edges(
         self, form: str = "uv"
@@ -832,46 +826,37 @@ def convert_all_from_dgl(
 
 
 # ---------------------------------------------------------------------------
-# dgl.random shim
+# Misc utilities
 # ---------------------------------------------------------------------------
 
-random = types.ModuleType("dgl.random")
-random.__package__ = "dgl"
 
-
-def _random_seed(seed: int) -> None:
-    """Drop-in for ``dgl.random.seed(...)``."""
+def set_seed(seed: int) -> None:
+    """Seed the torch RNG (used for all graph-level random operations)."""
     torch.manual_seed(seed)
 
 
-random.seed = _random_seed
+def add_self_loop(g: Graph, edge_fill_value: float = 0.0) -> Graph:
+    """Return a new graph with a self-loop added at every node.
 
-
-# ---------------------------------------------------------------------------
-# dgl.transforms shim
-# ---------------------------------------------------------------------------
-
-transforms = types.ModuleType("dgl.transforms")
-transforms.__package__ = "dgl"
-
-
-def _add_self_loop(g: Graph) -> Graph:
-    """Drop-in for ``dgl.transforms.add_self_loop(...)``."""
+    Edge features on new self-loop edges are filled with ``edge_fill_value``
+    (default 0). If you use edge weights where 1 means "present", pass
+    ``edge_fill_value=1.0``.
+    """
     src, dst = g.edges()
     self_nodes = torch.arange(g.num_nodes(), dtype=torch.long, device=g.device)
     new_src = torch.cat([src, self_nodes])
     new_dst = torch.cat([dst, self_nodes])
     new_g = Graph((new_src, new_dst), num_nodes=g.num_nodes(), device=g.device)
     new_g.ndata = {k: v.clone() for k, v in g.ndata.items()}
-    # Pad edge features with zeros for the new self-loop edges
-    num_old = g.num_edges()
     for k, v in g.edata.items():
-        pad = torch.zeros(g.num_nodes(), *v.shape[1:], dtype=v.dtype, device=v.device)
+        pad = torch.full(
+            (g.num_nodes(), *v.shape[1:]),
+            edge_fill_value,
+            dtype=v.dtype,
+            device=v.device,
+        )
         new_g.edata[k] = torch.cat([v, pad])
     return new_g
-
-
-transforms.add_self_loop = _add_self_loop
 
 
 # ---------------------------------------------------------------------------
